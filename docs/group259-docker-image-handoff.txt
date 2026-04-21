@@ -1,0 +1,102 @@
+================================================================================
+Group 259 当前 Docker 镜像说明与后续阶段用法（发给队友只读）
+生成说明：与仓库 services/converter 及 contracts 保持一致；阶段 2 部署前请核对镜像 digest。
+================================================================================
+一、镜像定位（一句话）
+--------------------------------------------------------------------------------
+本镜像是「单一事实来源」的文档转换服务：同一镜像应部署在 EC2 路径与 Serverless（Lambda）
+路径上，用于对比架构（冷启动、超时、伸缩等），而不是对比两套不同转换实现。
+二、镜像里具体包含什么
+--------------------------------------------------------------------------------
+1) 基础层
+   - 基础镜像：gotenberg/gotenberg:8（Gotenberg 官方镜像，内含无头 LibreOffice 等，
+     用于 Office 类文档转 PDF；基础镜像内还包含 Chromium 等 Gotenberg 组件，本组 API 主要使用
+     LibreOffice 模块。）
+   - 基础镜像许可：以 Gotenberg 及 Debian 软件栈为准（Gotenberg 项目为 MIT）。
+2) 构建时额外安装的系统包（Dockerfile 中 apt-get）
+   - poppler-utils：提供 pdftoppm，用于 PDF 渲染为 PNG。
+   - curl：启动脚本探活 Gotenberg /health。
+   - python3、python3-venv：运行封装层。
+3) Python 虚拟环境 /opt/venv（pip 安装自 requirements.txt）
+   - fastapi、uvicorn：HTTP API 框架与服务进程。
+   - boto3：从 S3 读入 DOCX/PDF、写回 PDF/PNG/manifest.json。
+   - httpx：作为客户端调用本容器内的 Gotenberg HTTP API（LibreOffice 转换）。
+4) 应用代码
+   - /app/src/main.py：FastAPI 应用，业务逻辑与 OpenAPI 契约对应。
+5) 启动方式（entrypoint.sh）
+   - 先后台启动 gotenberg，监听容器内 127.0.0.1:3000（对外映射可选暴露 3000 便于调试）。
+   - 轮询 http://127.0.0.1:3000/health 直至就绪。
+   - 再 exec 启动 uvicorn：监听 0.0.0.0:8080（对外服务端口，阶段 2 负载均衡/网关应转发到此）。
+三、容器内对外行为（运行时）--------------------------------------------------------------------------------
+监听端口：
+  - 8080：本组业务 API（队友在 EC2/Lambda 上应把「用户流量」接到此端口，或通过 Lambda Web Adapter
+    等把 API Gateway 事件转成对本机的 HTTP 请求）。
+  - 3000：Gotenberg 自身（可选映射，仅调试用；生产可只暴露 8080）。
+HTTP 路由（与 contracts/openapi.yaml 一致）：
+  - GET  /health
+        返回 {"status":"ok"}，表示 FastAPI 已启动（不替代 Gotenberg 健康，但 entrypoint 已等待 Gotenberg）。
+  - POST /v1/convert/docx-to-pdf
+        请求体 JSON：input{bucket,key}、output{bucket,keyPrefix}。
+        行为：S3 GetObject 读 DOCX -> multipart 调用本机 Gotenberg /forms/libreoffice/convert
+        -> 得到 PDF 字节 -> S3 PutObject 到 {keyPrefix}{id}.pdf（id 由 input key 的文件名去扩展名得到）。
+  - POST /v1/convert/pdf-to-images
+        请求体 JSON：input{bucket,key}、output{bucket,keyPrefix}、可选 render{dpi,format,maxPages,pageRange}。
+        行为：S3 GetObject 读 PDF -> pdftoppm 生成 PNG -> 逐个 PutObject 到 keyPrefix 下 page-0001.png ...
+        -> 写 manifest.json 到同 prefix 下，响应中返回 manifestKey。
+错误与 HTTP 状态：
+  - 多数业务失败以 JSON body 中 status=failed + error.code 表示（见 OpenAPI）。
+  - 请求体验证失败可能返回 400（INVALID_INPUT）。
+  - 经 API Gateway 同步集成时，客户端可能因网关约 29s 限制看到 504 等（见下文阶段 2）。
+四、环境变量（阶段 2 必配）
+--------------------------------------------------------------------------------
+  AWS_REGION          建议显式设置（Lambda/EC2 也可靠实例元数据，但本地与容器内建议写明）。
+  AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+                      仅本地或非 IAM 角色环境需要；EC2 用 Instance Profile、Lambda 用执行角色时通常省略。
+  GOTENBERG_URL       默认 http://127.0.0.1:3000，一般不改。
+  CONVERSION_TIMEOUT_SEC  默认 300，与 Gotenberg/pdftoppm 等待时间相关；Lambda 超时需与此协调（Lambda 超时
+                      应略大于或等于业务需要，且注意 API Gateway 同步上限）。
+五、与 S3、数据清单的约定
+--------------------------------------------------------------------------------
+  - 转换只认 S3：请求里传 bucket + key，不在 API body 里传大文件（避免 API Gateway payload 限制混淆）。
+  - 数据集清单：datasets/manifest.json（Tier A），对象应按 OpenAPI/phase0 文档中的前缀上传到桶内，
+    例如 input/docx/{id}.docx、input/pdf/{id}.pdf；输出写入 output/pdf/、output/images/{id}/ 等。
+  - datasets/raw/ 默认不入库（gitignore），队友可 python scripts/generate_smoke_assets.py 再生。
+六、后续阶段如何使用本镜像（阶段 2 及以后）
+--------------------------------------------------------------------------------
+【共同前提】
+  1) 在 CI 或一人机器上 docker build，打统一 tag（如 group259-converter:v0.1.0）。
+  2) docker inspect 记录镜像 digest，写入报告与 Artifact 附录，保证 EC2 与 Lambda 使用同一 digest 或
+     可复现 tag。
+  3) 将镜像推送到 ECR（推荐）或团队约定的镜像仓库；两人禁止各改各的 Dockerfile 却不更新 tag。
+【EC2 路径（常驻）】
+  - 在实例上安装/使用 Docker（或 containerd + nerdctl），从 ECR docker pull 该镜像。
+  - docker run -p 8080:8080 ... 或通过 systemd/compose 保活；前面接 ALB/Nginx，ALB idle timeout
+    调大以支持长转换（与 API Gateway 29s 不同）。
+  - 绑定 IAM Instance Profile：权限至少包含指定 bucket 的 s3:GetObject、s3:PutObject（及 List 若需要）。
+【Serverless 路径（Lambda + API Gateway）】
+  - 将同一镜像推送到 ECR，创建 Lambda 函数（容器镜像），配置内存、超时（最长 900s）、/tmp 大小
+    （大 PDF 中间文件可能需要更大 ephemeral storage）。
+  - Lambda 执行角色：同上 S3 权限。
+  - API Gateway -> Lambda：同步集成约 29s 上限。超过该时间的请求不适合作为「经网关的端到端成功路径」；
+    large/stress 应用异步 job、Step Functions，或报告里单独声明「压测直连 Lambda Function URL / 内网」
+    与经网关路径的口径差异。
+  - 若使用 Lambda Web Adapter：容器仍监听 8080，由 Adapter 将事件转为 HTTP；具体由负责 Serverless 的
+    队友按 AWS 文档配置（阶段 1 镜像已满足「HTTP on 8080」）。【压测与对比实验】
+  - 压测工具（k6/Locust）应对两条架构暴露的同一套 REST 路径发请求；固定 manifest 中对象与 region。
+  - 记录 p50/p90/p99、错误率、Lambda Init Duration 等（见 docs/metrics-definitions.md）。
+七、队友如何获得「同一份」镜像（推荐顺序）
+--------------------------------------------------------------------------------
+  A) 首选：git clone 本仓库，在 services/converter 目录执行 docker build -t group259-converter:local .
+  B) 备选：你方 docker save 导出 tar，对方 docker load（文件大，适合网络极差场景）。
+  C) 协作：推 ECR/Docker Hub，对方 docker pull 指定 digest。
+切勿通过聊天/邮件发送 AWS 访问密钥；仅共享仓库与镜像地址。
+八、Windows 检出注意
+--------------------------------------------------------------------------------
+  Dockerfile 构建阶段已对 entrypoint.sh 去除 Windows CRLF（\r），若在 Linux 仅构建一般无此问题。
+  仓库 .gitattributes 对 *.sh 使用 LF，可减少冲突。九、仓库中与本镜像配套、需一并阅读的文档/文件
+--------------------------------------------------------------------------------
+  contracts/openapi.yaml
+  docs/experiment-matrix.md
+  docs/metrics-definitions.md
+  docs/phase0-phase1-handoff-for-teammate.md
+  services/converter/README.md

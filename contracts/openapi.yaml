@@ -1,0 +1,231 @@
+openapi: 3.0.3
+info:
+  title: Group 259 Document Conversion API
+  version: 1.0.0
+  description: |
+    DOCX→PDF 与 PDF→PNG（经 poppler）转换服务；输入输出均通过 S3。
+
+    **同步路径限制**：客户端经 API Gateway 访问时，集成超时约 **29s**；超过该时间的转换可能收到 **504** 或网关错误，需在阶段 2 对 large/stress 使用异步或直连测量。
+servers:
+  - url: http://localhost:8080
+    description: Local converter container
+  - url: https://api.example.com
+    description: Deployed (EC2 ALB or API Gateway)
+
+paths:
+  /health:
+    get:
+      summary: Liveness probe
+      operationId: healthCheck
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /v1/convert/docx-to-pdf:
+    post:
+      summary: Convert DOCX from S3 to PDF on S3 (LibreOffice via Gotenberg)
+      operationId: convertDocxToPdf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DocxToPdfRequest"
+      responses:
+        "200":
+          description: Success or application-level failure (check body.status)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConvertResponse"
+        "400":
+          description: Malformed request
+        "504":
+          description: Gateway timeout (e.g. API Gateway ~29s limit) — see description above
+        "429":
+          description: Throttling
+
+  /v1/convert/pdf-to-images:
+    post:
+      summary: Rasterize PDF from S3 to PNGs on S3; manifest JSON at output.manifestKey
+      operationId: convertPdfToImages
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PdfToImagesRequest"
+      responses:
+        "200":
+          description: Success or application-level failure (check body.status)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PdfToImagesResponse"
+        "400":
+          description: Malformed request
+        "504":
+          description: Gateway timeout
+        "429":
+          description: Throttling
+
+components:
+  schemas:
+    S3Location:
+      type: object
+      required: [bucket, key]
+      properties:
+        bucket:
+          type: string
+        key:
+          type: string
+
+    OutputPrefix:
+      type: object
+      required: [bucket, keyPrefix]
+      properties:
+        bucket:
+          type: string
+        keyPrefix:
+          type: string
+          description: Must end with / ; PDF written as {prefix}{id}.pdf where id derived from input key
+
+    DocxToPdfRequest:
+      type: object
+      required: [input, output]
+      properties:
+        input:
+          $ref: "#/components/schemas/S3Location"
+        output:
+          $ref: "#/components/schemas/OutputPrefix"
+        clientRequestId:
+          type: string
+          format: uuid
+
+    RenderOptions:
+      type: object
+      description: Fixed defaults in v1 — dpi 150, png, maxPages 50
+      properties:
+        dpi:
+          type: integer
+          default: 150
+          minimum: 72
+          maximum: 300
+        format:
+          type: string
+          enum: [png]
+          default: png
+        maxPages:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 200
+        pageRange:
+          type: string
+          nullable: true
+          description: 'Omitted or null = from page 1 up to maxPages; or "1-10" inclusive'
+
+    PdfToImagesRequest:
+      type: object
+      required: [input, output]
+      properties:
+        input:
+          $ref: "#/components/schemas/S3Location"
+        output:
+          type: object
+          required: [bucket, keyPrefix]
+          properties:
+            bucket:
+              type: string
+            keyPrefix:
+              type: string
+              description: e.g. output/images/doc_id/ — pages uploaded as page-0001.png ...
+        render:
+          $ref: "#/components/schemas/RenderOptions"
+        clientRequestId:
+          type: string
+          format: uuid
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_INPUT
+            - OBJECT_NOT_FOUND
+            - CONVERSION_FAILED
+            - CONVERSION_TIMEOUT
+            - NOT_IMPLEMENTED
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+
+    ConvertResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [succeeded, failed]
+        output:
+          type: object
+          properties:
+            bucket:
+              type: string
+            key:
+              type: string
+              description: Full S3 key of the PDF
+        metrics:
+          type: object
+          properties:
+            processingMs:
+              type: integer
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+
+    ImageManifestEntry:
+      type: object
+      required: [page, key]
+      properties:
+        page:
+          type: integer
+        key:
+          type: string
+
+    PdfToImagesResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [succeeded, failed]
+        output:
+          type: object
+          properties:
+            bucket:
+              type: string
+            manifestKey:
+              type: string
+              description: S3 key of JSON manifest listing all page PNG keys
+            pageCount:
+              type: integer
+        metrics:
+          type: object
+          properties:
+            processingMs:
+              type: integer
+        error:
+          $ref: "#/components/schemas/ErrorBody"

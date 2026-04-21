@@ -1,0 +1,38 @@
+### Health
+GET http://localhost:8080/health
+
+### DOCX to PDF (replace bucket and keys)
+POST http://localhost:8080/v1/convert/docx-to-pdf
+Content-Type: application/json
+
+{
+  "input": {
+    "bucket": "your-bucket",
+    "key": "input/docx/docx_smoke_001.docx"
+  },
+  "output": {
+    "bucket": "your-bucket",
+    "keyPrefix": "output/pdf/"
+  }
+}
+
+### PDF to images
+POST http://localhost:8080/v1/convert/pdf-to-images
+Content-Type: application/json
+
+{
+  "input": {
+    "bucket": "your-bucket",
+    "key": "input/pdf/pdf_smoke_001.pdf"
+  },
+  "output": {
+    "bucket": "your-bucket",
+    "keyPrefix": "output/images/pdf_smoke_001/"
+  },
+  "render": {
+    "dpi": 150,
+    "format": "png",
+    "maxPages": 50,
+    "pageRange": null
+  }
+}
