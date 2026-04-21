@@ -1,8 +1,8 @@
-# CS5296 Group 259 — Document conversion benchmark (EC2 vs Serverless)
+# CS5296 Group 259 â€” Document conversion benchmark (EC2 vs Serverless)
 
 Course project: one Docker image runs **DOCX to PDF** (Gotenberg/LibreOffice) and **PDF to PNG** (poppler), deployed on **EC2** vs **Lambda + API Gateway** for performance comparison.
 
-## What your teammate needs (minimal)
+## What we needs to do
 
 1. **Repo layout**: API spec `contracts/openapi.yaml`, dataset list `datasets/manifest.json`, service `services/converter/` (Dockerfile + FastAPI), docs under `docs/`.
 2. **Image contents and phase-2 usage**: read and share [`docs/group259-docker-image-handoff.txt`](docs/group259-docker-image-handoff.txt).
