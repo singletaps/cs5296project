@@ -26,6 +26,18 @@ Course project: one Docker image runs **DOCX to PDF** (Gotenberg/LibreOffice) an
 | `scripts/` | generate synthetic DOCX/PDF |
 | `services/converter/` | production image definition and source |
 
+## Push image to Amazon ECR (account `161748405735`, `us-east-1`, repo `cs5296project`)
+
+1. Start **Docker Desktop**.
+2. Configure AWS credentials (`aws configure`, or environment variables / SSO) for an identity that can push to ECR.
+3. Install **AWS Tools for PowerShell** (optional but matches console instructions):  
+   `Install-Module -Name AWS.Tools.ECR -Scope CurrentUser -Force`  
+   Or use `python -m pip install awscli` and `python -m awscli configure`.
+4. From repo root, run:  
+   `.\scripts\push-ecr-us-east-1.ps1`  
+
+The script builds under `services/converter`, tags `161748405735.dkr.ecr.us-east-1.amazonaws.com/cs5296project:latest`, logs in with `Get-ECRLoginCommand` when available, otherwise `python -m awscli ecr get-login-password`, then `docker push`.
+
 ## Push to GitHub (repo name: cs5296project)
 
 Git is initialized with branch `main` and commits are ready. Create an **empty** public repo named **`cs5296project`** on GitHub, then follow [`docs/push-instructions.txt`](docs/push-instructions.txt) to add `origin` and run `git push -u origin main`.
