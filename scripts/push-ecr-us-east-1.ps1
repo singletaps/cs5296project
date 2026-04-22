@@ -43,6 +43,9 @@ Write-Host "[3/4] ECR login ($RegistryHost) ..."
 $loginOk = $false
 
 # Method A: AWS Tools for PowerShell (user-requested)
+if (-not (Get-Command Get-ECRLoginCommand -ErrorAction SilentlyContinue)) {
+  Import-Module AWS.Tools.ECR -ErrorAction SilentlyContinue
+}
 if (Get-Command Get-ECRLoginCommand -ErrorAction SilentlyContinue) {
   try {
     (Get-ECRLoginCommand -Region $Region).Password | docker login --username AWS --password-stdin $RegistryHost
