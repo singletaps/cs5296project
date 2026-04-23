@@ -134,8 +134,17 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
     )
 
 
+def _aws_region_for_client() -> str | None:
+    # Empty string from e.g. `docker -e AWS_REGION=$AWS_REGION` (unset host) would yield invalid s3..amazonaws.com
+    r = (os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "").strip()
+    return r or None
+
+
 def _s3_client():
-    return boto3.client("s3", region_name=os.environ.get("AWS_REGION"))
+    r = _aws_region_for_client()
+    if r:
+        return boto3.client("s3", region_name=r)
+    return boto3.client("s3")
 
 
 def _normalize_prefix(prefix: str) -> str:
