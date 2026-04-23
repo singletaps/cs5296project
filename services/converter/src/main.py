@@ -5,8 +5,10 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,48 @@ from pydantic import BaseModel, Field
 app = FastAPI(title="Group259 Converter", version="1.0.0")
 
 CONVERSION_TIMEOUT_SEC = float(os.environ.get("CONVERSION_TIMEOUT_SEC", "300"))
+
+# #region agent log
+def _agent_debug_path() -> Path:
+    if os.environ.get("DEBUG_NDJSON_LOG"):
+        return Path(os.environ["DEBUG_NDJSON_LOG"])
+    base = Path(__file__).resolve()
+    try:
+        return base.parents[3] / "debug-fb6a05.log"
+    except IndexError:
+        return base.parent.parent / "debug-fb6a05.log"
+
+
+def _agent_debug_log(
+    message: str,
+    *,
+    data: dict[str, Any],
+    hypothesis_id: str,
+    location: str = "main.py:docx",
+) -> None:
+    line = (
+        json.dumps(
+            {
+                "sessionId": "fb6a05",
+                "timestamp": int(time.time() * 1000),
+                "location": location,
+                "message": message,
+                "data": data,
+                "hypothesisId": hypothesis_id,
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
+    print(line, end="", file=sys.stderr, flush=True)
+    p = _agent_debug_path()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except OSError:
+        pass
+# #endregion
 
 
 class S3Loc(BaseModel):
@@ -151,7 +195,33 @@ def health():
 
 @app.post("/v1/convert/docx-to-pdf")
 def convert_docx_to_pdf(req: DocxToPdfRequest):
+    # #region agent log
+    try:
+        return _convert_docx_to_pdf_core(req)
+    except Exception as e:
+        _agent_debug_log(
+            "docx_to_pdf unhandled_exception",
+            data={
+                "exc_type": type(e).__name__,
+                "exc_msg": str(e)[:800],
+                "stack": traceback.format_exc()[:3000],
+            },
+            hypothesis_id="E",
+            location="main.py:convert_docx_to_pdf",
+        )
+        raise
+    # #endregion
+
+
+def _convert_docx_to_pdf_core(req: DocxToPdfRequest):
     started = time.perf_counter()
+    # #region agent log
+    _agent_debug_log(
+        "docx_to_pdf start",
+        data={"in_bucket": req.input.bucket, "in_key": req.input.key, "out_bucket": req.output.bucket, "out_prefix": req.output.keyPrefix},
+        hypothesis_id="A",
+    )
+    # #endregion
     try:
         object_id = _object_id_from_key(req.input.key)
     except ValueError as e:
@@ -172,10 +242,21 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
     except BotoCoreError as e:
         return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 read failed: {e}")
 
+    # #region agent log
+    _agent_debug_log(
+        "docx_to_pdf after_s3_read",
+        data={"docx_len": len(docx_bytes) if docx_bytes else 0, "out_key": out_key},
+        hypothesis_id="A",
+    )
+    # #endregion
+
     if not docx_bytes:
         return _fail_response(error_code="INVALID_INPUT", message="Empty DOCX object")
 
     soffice = _soffice_bin()
+    # #region agent log
+    _agent_debug_log("docx_to_pdf soffice", data={"soffice": soffice, "soffice_set": bool(soffice)}, hypothesis_id="B")
+    # #endregion
     if not soffice:
         return _fail_response(
             error_code="CONVERSION_FAILED",
@@ -201,6 +282,17 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
             )
         except subprocess.TimeoutExpired:
             return _fail_response(error_code="CONVERSION_TIMEOUT", message="LibreOffice (soffice) conversion timed out")
+        # #region agent log
+        _agent_debug_log(
+            "docx_to_pdf soffice_done",
+            data={
+                "returncode": cp.returncode,
+                "stderr_tail": (cp.stderr or "")[:400],
+                "out_exists": out_path.is_file(),
+            },
+            hypothesis_id="C",
+        )
+        # #endregion
         if cp.returncode != 0:
             return _fail_response(
                 error_code="CONVERSION_FAILED",
@@ -225,6 +317,13 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
             message="Conversion output is not a valid PDF",
         )
 
+    # #region agent log
+    _agent_debug_log(
+        "docx_to_pdf before_s3_put",
+        data={"pdf_len": len(pdf_bytes), "out_bucket": req.output.bucket, "out_key": out_key, "head4": list(pdf_bytes[:4])},
+        hypothesis_id="D",
+    )
+    # #endregion
     try:
         s3.put_object(
             Bucket=req.output.bucket,
