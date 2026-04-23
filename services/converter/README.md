@@ -1,6 +1,6 @@
 # Converter service（Group 259）
 
-同一 Docker 镜像：**Gotenberg 8**（LibreOffice，:3000）+ **poppler**（`pdftoppm`）+ **FastAPI**（:8080）S3 读写封装。
+同一 Docker 镜像：**Gotenberg 8** 基底（`entrypoint` 仍起 `/health` :3000；**DOCX→PDF 在应用内直接调用 `soffice` CLI，不经 Gotenberg HTTP**）+ **poppler**（`pdftoppm`）+ **FastAPI**（:8080）S3 读写封装。
 
 ## 构建与运行
 
@@ -25,8 +25,8 @@ docker run --rm --name g259 -p 8080:8080 -p 3000:3000 \
 |------|------|
 | `AWS_REGION` | 必填（除非实例元数据可用） |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | 本地或 CI；EC2/Lambda 用 IAM 角色时可省略 |
-| `GOTENBERG_URL` | 默认 `http://127.0.0.1:3000` |
-| `CONVERSION_TIMEOUT_SEC` | Gotenberg HTTP 超时秒数，默认 `300` |
+| `SOFFICE_PATH` | 可选；`soffice` 可执行文件绝对路径。未设时在 `PATH` 中查找。 |
+| `CONVERSION_TIMEOUT_SEC` | `soffice` / `pdftoppm` 子进程超时秒数，默认 `300` |
 
 ## API
 

@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import boto3
-import httpx
 from botocore.exceptions import ClientError
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -20,7 +19,6 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="Group259 Converter", version="1.0.0")
 
-GOTENBERG_URL = os.environ.get("GOTENBERG_URL", "http://127.0.0.1:3000").rstrip("/")
 CONVERSION_TIMEOUT_SEC = float(os.environ.get("CONVERSION_TIMEOUT_SEC", "300"))
 
 
@@ -111,6 +109,13 @@ def _object_id_from_key(key: str) -> str:
     return stem
 
 
+def _soffice_bin() -> str | None:
+    p = os.environ.get("SOFFICE_PATH", "").strip()
+    if p and os.path.isfile(p):
+        return p
+    return shutil.which("soffice")
+
+
 def _parse_page_range(page_range: str | None, max_pages: int) -> tuple[int, int]:
     if not page_range:
         return 1, max_pages
@@ -153,31 +158,51 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
     if not docx_bytes:
         return _fail_response(error_code="INVALID_INPUT", message="Empty DOCX object")
 
-    filename = Path(req.input.key).name or f"{object_id}.docx"
-    ct = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-    try:
-        with httpx.Client(timeout=CONVERSION_TIMEOUT_SEC) as client:
-            files = {"files": (filename, docx_bytes, ct)}
-            r = client.post(f"{GOTENBERG_URL}/forms/libreoffice/convert", files=files)
-    except httpx.TimeoutException:
-        return _fail_response(error_code="CONVERSION_TIMEOUT", message="Gotenberg request timed out")
-    except httpx.HTTPError as e:
-        return _fail_response(error_code="CONVERSION_FAILED", message=f"Gotenberg HTTP error: {e}")
-
-    if r.status_code != 200:
+    soffice = _soffice_bin()
+    if not soffice:
         return _fail_response(
             error_code="CONVERSION_FAILED",
-            message=f"Gotenberg returned {r.status_code}",
-            details={"body_preview": r.text[:500]},
+            message="soffice not found; install LibreOffice or set SOFFICE_PATH",
         )
 
-    pdf_bytes = r.content
-    if not pdf_bytes or not pdf_bytes.startswith(b"%PDF"):
+    with tempfile.TemporaryDirectory() as td:
+        td_path = Path(td)
+        in_path = td_path / "input.docx"
+        out_path = td_path / "input.pdf"
+        in_path.write_bytes(docx_bytes)
+        cmd = [soffice, "--headless", "--convert-to", "pdf", "--outdir", str(td_path), str(in_path)]
+        try:
+            cp = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=CONVERSION_TIMEOUT_SEC,
+            )
+        except subprocess.TimeoutExpired:
+            return _fail_response(error_code="CONVERSION_TIMEOUT", message="LibreOffice (soffice) conversion timed out")
+        if cp.returncode != 0:
+            return _fail_response(
+                error_code="CONVERSION_FAILED",
+                message="LibreOffice (soffice) conversion failed",
+                details={
+                    "returncode": cp.returncode,
+                    "stderr": (cp.stderr or "")[:2000],
+                    "stdout": (cp.stdout or "")[:500],
+                },
+            )
+        if not out_path.is_file():
+            return _fail_response(
+                error_code="CONVERSION_FAILED",
+                message="LibreOffice did not produce input.pdf",
+                details={"stderr": (cp.stderr or "")[:2000]},
+            )
+        pdf_bytes = out_path.read_bytes()
+
+    if not pdf_bytes.startswith(b"%PDF"):
         return _fail_response(
             error_code="CONVERSION_FAILED",
-            message="Gotenberg response is not a PDF",
-            details={"content_type": r.headers.get("content-type")},
+            message="Conversion output is not a valid PDF",
         )
 
     try:
