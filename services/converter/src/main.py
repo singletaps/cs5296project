@@ -116,6 +116,21 @@ def _soffice_bin() -> str | None:
     return shutil.which("soffice")
 
 
+def _soffice_subprocess_env(work_dir: Path) -> dict[str, str]:
+    """LibreOffice needs a writable profile dir; Lambda often has a non-writable or missing $HOME for LO."""
+    lo_home = work_dir / "lo_profile"
+    config = lo_home / ".config"
+    cache = lo_home / ".cache"
+    for p in (lo_home, config, cache):
+        p.mkdir(parents=True, exist_ok=True)
+    return {
+        **os.environ,
+        "HOME": str(lo_home),
+        "XDG_CONFIG_HOME": str(config),
+        "XDG_CACHE_HOME": str(cache),
+    }
+
+
 def _parse_page_range(page_range: str | None, max_pages: int) -> tuple[int, int]:
     if not page_range:
         return 1, max_pages
@@ -178,6 +193,7 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
                 capture_output=True,
                 text=True,
                 timeout=CONVERSION_TIMEOUT_SEC,
+                env=_soffice_subprocess_env(td_path),
             )
         except subprocess.TimeoutExpired:
             return _fail_response(error_code="CONVERSION_TIMEOUT", message="LibreOffice (soffice) conversion timed out")
