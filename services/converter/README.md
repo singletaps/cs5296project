@@ -1,8 +1,10 @@
-# Converter service（Group 259）
+# Converter service (Group 259)
 
-同一 Docker 镜像：**Gotenberg 8** 基底（`entrypoint` 仍起 `/health` :3000；**DOCX→PDF 在应用内直接调用 `soffice` CLI，不经 Gotenberg HTTP**）+ **poppler**（`pdftoppm`）+ **FastAPI**（:8080）S3 读写封装。
+One Docker build from **Gotenberg 8** (LibreOffice preinstalled) plus **poppler** (`pdftoppm`) and a **FastAPI** wrapper (S3 in/out). **DOCX to PDF** uses the **`soffice` CLI** in-process (not the Gotenberg HTTP API).
 
-## 构建与运行
+## Build and run
+
+**EC2 / local (default `docker build` = target `ec2`: starts Gotenberg on :3000 and the API on :8080)**:
 
 ```bash
 cd services/converter
@@ -14,40 +16,48 @@ docker run --rm --name g259 -p 8080:8080 -p 3000:3000 \
   group259-converter:local
 ```
 
-- **Windows 检出**：若 `entrypoint.sh` 为 CRLF，镜像内在构建阶段会用 `sed` 去掉 `\r`，避免 `exec /entrypoint.sh: no such file or directory`。仓库已设 [.gitattributes](../../.gitattributes) 尽量统一 LF。
-- **快速探活**（容器启动约 5–15s）：`curl http://127.0.0.1:8080/health`；可选 `curl http://127.0.0.1:3000/health` 查看 Gotenberg/LibreOffice 状态。
+**Lambda (container)**: uses [AWS Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter) — only **uvicorn**; **no** Gotenberg process. Same `src/` as EC2. Build with the `lambda` target:
 
-本地调试可使用 `~/.aws/credentials` 挂载（勿提交密钥）。
+```bash
+docker build --target lambda -t group259-converter:lambda .
+```
 
-## 环境变量
+See [docs/lambda-container-deploy.md](../../docs/lambda-container-deploy.md).
 
-| 变量 | 说明 |
-|------|------|
-| `AWS_REGION` | 必填（除非实例元数据可用） |
-| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | 本地或 CI；EC2/Lambda 用 IAM 角色时可省略 |
-| `SOFFICE_PATH` | 可选；`soffice` 可执行文件绝对路径。未设时在 `PATH` 中查找。 |
-| `CONVERSION_TIMEOUT_SEC` | `soffice` / `pdftoppm` 子进程超时秒数，默认 `300` |
+- **Windows checkouts**: `Dockerfile` runs `sed` on shell entrypoints to strip `\r` so `/bin/bash` works. The repo has [.gitattributes](../../.gitattributes) for LF where possible.
+- **Health checks**: `curl http://127.0.0.1:8080/health` (API). Optional: `curl http://127.0.0.1:3000/health` (Gotenberg) when using the `ec2` image.
+
+For local testing you can mount `~/.aws/credentials` (do not commit secrets).
+
+## Environment variables
+
+| Name | Description |
+|------|-------------|
+| `AWS_REGION` | Required unless using instance metadata / role |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | Local/CI; omit on EC2/Lambda with IAM roles |
+| `SOFFICE_PATH` | Optional path to the `soffice` binary; otherwise use `PATH` |
+| `CONVERSION_TIMEOUT_SEC` | Subprocess timeout for `soffice` / `pdftoppm` (default `300`) |
 
 ## API
 
-见 [contracts/openapi.yaml](../../contracts/openapi.yaml)。
+See [contracts/openapi.yaml](../../contracts/openapi.yaml).
 
-- `GET /health` — 仅检查 API 进程；生产可扩展为连调 Gotenberg。
+- `GET /health` — process up (extend for deeper checks in production)
 - `POST /v1/convert/docx-to-pdf`
 - `POST /v1/convert/pdf-to-images`
 
-## 已知限制
+## Known limitations
 
-- LibreOffice 与 Word 版式非 100% 一致；极个别 DOCX 可能超时或失败（见 Gotenberg 文档）。
-- 经 **API Gateway** 同步路由时约 **29s** 上限；长任务需阶段 2 异步或直连测量。
-- 镜像较大，Lambda **冷启动**会较慢（符合 benchmark 目标）。
+- LibreOffice is not a pixel-perfect Word replacement; a few DOCX may fail or time out.
+- **API Gateway** synchronous integration has a ~**29s** cap; use async/Function URL/longer paths for long jobs as appropriate.
+- Image size is **large**; expect slower **Lambda cold starts** (useful for benchmarks).
 
-## 版本钉扎
+## Pinning the image
 
-构建后建议记录 digest：
+After build, record the digest:
 
 ```bash
 docker inspect --format='{{index .RepoDigests 0}}' group259-converter:local
 ```
 
-基础镜像 tag：`gotenberg/gotenberg:8`（随上游浮动；生产可改为 `@sha256:...`）。
+Base: `gotenberg/gotenberg:8` (floating tag; for production you may pin `@sha256:...`).
