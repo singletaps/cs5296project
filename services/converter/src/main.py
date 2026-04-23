@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -169,6 +169,8 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
         if code in ("NoSuchKey", "404", "NotFound"):
             return _fail_response(error_code="OBJECT_NOT_FOUND", message=str(e), details={"bucket": req.input.bucket, "key": req.input.key})
         return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 read failed: {e}")
+    except BotoCoreError as e:
+        return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 read failed: {e}")
 
     if not docx_bytes:
         return _fail_response(error_code="INVALID_INPUT", message="Empty DOCX object")
@@ -192,6 +194,8 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
                 check=False,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=CONVERSION_TIMEOUT_SEC,
                 env=_soffice_subprocess_env(td_path),
             )
@@ -230,6 +234,8 @@ def convert_docx_to_pdf(req: DocxToPdfRequest):
         )
     except ClientError as e:
         return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 write failed: {e}")
+    except BotoCoreError as e:
+        return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 write failed: {e}")
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     return {
@@ -267,6 +273,8 @@ def convert_pdf_to_images(req: PdfToImagesRequest):
         if code in ("NoSuchKey", "404", "NotFound"):
             return _fail_response(error_code="OBJECT_NOT_FOUND", message=str(e), details={"bucket": req.input.bucket, "key": req.input.key})
         return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 read failed: {e}")
+    except BotoCoreError as e:
+        return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 read failed: {e}")
 
     if not pdf_bytes:
         return _fail_response(error_code="INVALID_INPUT", message="Empty PDF object")
@@ -289,7 +297,15 @@ def convert_pdf_to_images(req: PdfToImagesRequest):
             str(out_base),
         ]
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=int(CONVERSION_TIMEOUT_SEC))
+            subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=int(CONVERSION_TIMEOUT_SEC),
+            )
         except subprocess.TimeoutExpired:
             return _fail_response(error_code="CONVERSION_TIMEOUT", message="pdftoppm timed out")
         except subprocess.CalledProcessError as e:
@@ -313,31 +329,36 @@ def convert_pdf_to_images(req: PdfToImagesRequest):
         if not produced:
             return _fail_response(error_code="CONVERSION_FAILED", message="No PNG pages produced by pdftoppm")
 
-        manifest_pages: list[dict[str, Any]] = []
-        for idx, src in enumerate(produced, start=1):
-            dest_key = f"{key_prefix}page-{idx:04d}.png"
-            body = src.read_bytes()
+        try:
+            manifest_pages: list[dict[str, Any]] = []
+            for idx, src in enumerate(produced, start=1):
+                dest_key = f"{key_prefix}page-{idx:04d}.png"
+                page_body = src.read_bytes()
+                s3.put_object(
+                    Bucket=req.output.bucket,
+                    Key=dest_key,
+                    Body=page_body,
+                    ContentType="image/png",
+                )
+                manifest_pages.append({"page": idx, "key": dest_key})
+
+            manifest_obj = {
+                "dpi": render.dpi,
+                "format": render.format,
+                "sourcePdfKey": req.input.key,
+                "pages": manifest_pages,
+            }
+            manifest_key = f"{key_prefix}manifest.json"
             s3.put_object(
                 Bucket=req.output.bucket,
-                Key=dest_key,
-                Body=body,
-                ContentType="image/png",
+                Key=manifest_key,
+                Body=json.dumps(manifest_obj, indent=2).encode("utf-8"),
+                ContentType="application/json",
             )
-            manifest_pages.append({"page": idx, "key": dest_key})
-
-        manifest_obj = {
-            "dpi": render.dpi,
-            "format": render.format,
-            "sourcePdfKey": req.input.key,
-            "pages": manifest_pages,
-        }
-        manifest_key = f"{key_prefix}manifest.json"
-        s3.put_object(
-            Bucket=req.output.bucket,
-            Key=manifest_key,
-            Body=json.dumps(manifest_obj, indent=2).encode("utf-8"),
-            ContentType="application/json",
-        )
+        except ClientError as e:
+            return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 write failed: {e}")
+        except BotoCoreError as e:
+            return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 write failed: {e}")
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         return {
