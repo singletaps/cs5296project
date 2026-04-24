@@ -1,0 +1,56 @@
+﻿[
+    {
+        "id":  "pdf_smoke_001",
+        "target":  "lambda",
+        "clientMs":  4418,
+        "status":  "succeeded",
+        "processingMs":  1817,
+        "pageCount":  1,
+        "manifestKey":  "output/images/pdf_smoke_001/manifest.json"
+    },
+    {
+        "id":  "pdf_baseline_small",
+        "target":  "lambda",
+        "clientMs":  922,
+        "status":  "succeeded",
+        "processingMs":  380,
+        "pageCount":  2,
+        "manifestKey":  "output/images/pdf_baseline_small/manifest.json"
+    },
+    {
+        "id":  "pdf_baseline_medium",
+        "target":  "lambda",
+        "clientMs":  1845,
+        "status":  "succeeded",
+        "processingMs":  1328,
+        "pageCount":  8,
+        "manifestKey":  "output/images/pdf_baseline_medium/manifest.json"
+    },
+    {
+        "id":  "pdf_baseline_multipage",
+        "target":  "lambda",
+        "clientMs":  2926,
+        "status":  "succeeded",
+        "processingMs":  2384,
+        "pageCount":  15,
+        "manifestKey":  "output/images/pdf_baseline_multipage/manifest.json"
+    },
+    {
+        "id":  "pdf_large_001",
+        "target":  "lambda",
+        "clientMs":  6014,
+        "status":  "succeeded",
+        "processingMs":  5494,
+        "pageCount":  40,
+        "manifestKey":  "output/images/pdf_large_001/manifest.json"
+    },
+    {
+        "id":  "pdf_stress_001",
+        "target":  "lambda",
+        "clientMs":  7505,
+        "status":  "succeeded",
+        "processingMs":  6979,
+        "pageCount":  50,
+        "manifestKey":  "output/images/pdf_stress_001/manifest.json"
+    }
+]

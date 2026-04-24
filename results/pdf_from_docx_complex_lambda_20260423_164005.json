@@ -1,0 +1,15 @@
+﻿{
+    "target":  "lambda_pdf_from_docx",
+    "clientMs":  9323,
+    "result":  {
+                   "status":  "succeeded",
+                   "output":  {
+                                  "bucket":  "cs5296-project",
+                                  "manifestKey":  "output/images/pdf_from_docx_complex_001/manifest.json",
+                                  "pageCount":  14
+                              },
+                   "metrics":  {
+                                   "processingMs":  7713
+                               }
+               }
+}

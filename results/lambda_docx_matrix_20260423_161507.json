@@ -1,0 +1,56 @@
+﻿[
+    {
+        "id":  "docx_smoke_001",
+        "target":  "lambda",
+        "clientMs":  2613,
+        "status":  "succeeded",
+        "processingMs":  979,
+        "errorKey":  null,
+        "outputKey":  "output/pdf/docx_smoke_001.pdf"
+    },
+    {
+        "id":  "docx_baseline_small",
+        "target":  "lambda",
+        "clientMs":  1415,
+        "status":  "succeeded",
+        "processingMs":  896,
+        "errorKey":  null,
+        "outputKey":  "output/pdf/docx_baseline_small.pdf"
+    },
+    {
+        "id":  "docx_baseline_medium",
+        "target":  "lambda",
+        "clientMs":  1426,
+        "status":  "succeeded",
+        "processingMs":  904,
+        "errorKey":  null,
+        "outputKey":  "output/pdf/docx_baseline_medium.pdf"
+    },
+    {
+        "id":  "docx_baseline_large",
+        "target":  "lambda",
+        "clientMs":  1513,
+        "status":  "succeeded",
+        "processingMs":  994,
+        "errorKey":  null,
+        "outputKey":  "output/pdf/docx_baseline_large.pdf"
+    },
+    {
+        "id":  "docx_large_001",
+        "target":  "lambda",
+        "clientMs":  1435,
+        "status":  "succeeded",
+        "processingMs":  919,
+        "errorKey":  null,
+        "outputKey":  "output/pdf/docx_large_001.pdf"
+    },
+    {
+        "id":  "docx_large_002",
+        "target":  "lambda",
+        "clientMs":  1504,
+        "status":  "succeeded",
+        "processingMs":  976,
+        "errorKey":  null,
+        "outputKey":  "output/pdf/docx_large_002.pdf"
+    }
+]

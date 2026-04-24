@@ -1,0 +1,8 @@
+[
+  {"id":"docx_smoke_001","target":"ec2","timeTotalSec":0.869914,"http":200,"status":"succeeded","processingMs":866,"outputKey":"output/pdf/docx_smoke_001.pdf"},
+  {"id":"docx_baseline_small","target":"ec2","timeTotalSec":0.852376,"http":200,"status":"succeeded","processingMs":849,"outputKey":"output/pdf/docx_baseline_small.pdf"},
+  {"id":"docx_baseline_medium","target":"ec2","timeTotalSec":0.875408,"http":200,"status":"succeeded","processingMs":872,"outputKey":"output/pdf/docx_baseline_medium.pdf"},
+  {"id":"docx_baseline_large","target":"ec2","timeTotalSec":0.902001,"http":200,"status":"succeeded","processingMs":898,"outputKey":"output/pdf/docx_baseline_large.pdf"},
+  {"id":"docx_large_001","target":"ec2","timeTotalSec":0.873663,"http":200,"status":"succeeded","processingMs":870,"outputKey":"output/pdf/docx_large_001.pdf"},
+  {"id":"docx_large_002","target":"ec2","timeTotalSec":0.938990,"http":200,"status":"succeeded","processingMs":935,"outputKey":"output/pdf/docx_large_002.pdf"}
+]

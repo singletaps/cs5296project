@@ -1,0 +1,9 @@
+{
+  "id": "docx_baseline_medium",
+  "target": "ec2_local",
+  "n": 25,
+  "clientMs": { "min": 845, "max": 950, "mean": 881.4, "p50": 874, "p90": 929, "p99": 938 },
+  "unit": "ms derived from curl time_total sec * 1000",
+  "path": "http://127.0.0.1:8080 (instance only)",
+  "raw_sec_list": "see ec2 N=25 run in log or ec2_docx_baseline_medium_n25_raw_ms.txt"
+}

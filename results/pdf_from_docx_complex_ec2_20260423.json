@@ -1,0 +1,12 @@
+{
+  "target": "ec2_local",
+  "api": "POST /v1/convert/pdf-to-images",
+  "inputKey": "input/pdf/pdf_from_docx_complex_001.pdf",
+  "outputPrefix": "output/images/pdf_from_docx_complex_ec2/",
+  "time_total_sec": 5.842845,
+  "http": 200,
+  "status": "succeeded",
+  "pageCount": 14,
+  "processingMs": 5838,
+  "manifestKey": "output/images/pdf_from_docx_complex_ec2/manifest.json"
+}

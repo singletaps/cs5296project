@@ -4,6 +4,7 @@
 
 - 清单文件：[manifest.json](manifest.json)（Tier A 已由 `scripts/generate_smoke_assets.py` 填实 `sha256` / `bytes` / `pages`）。
 - 重新生成合成数据：在项目根目录执行 `pip install -r scripts/requirements.txt` 后运行 `python scripts/generate_smoke_assets.py`。
+- **高复杂度 DOCX**（图表/表格/多级标题/多图）：`python scripts/generate_complex_docx.py`（依赖 Pillow；会新增/更新 `docx_complex_stress_001` 与 `manifest.json`）。
 - 大文件不放 Git：本地或 CI 将原件放在 `datasets/raw/`，该目录已 `.gitignore`。
 - S3 键与 `id` 对齐，见 [contracts/openapi.yaml](../contracts/openapi.yaml) 与项目 `phase0-phase1-implementation.md`。
 

@@ -5,15 +5,13 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 import tempfile
 import time
-import traceback
 from pathlib import Path
 from typing import Any
 
 import boto3
-from botocore.exceptions import BotoCoreError, ClientError
+from botocore.exceptions import ClientError
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -22,48 +20,6 @@ from pydantic import BaseModel, Field
 app = FastAPI(title="Group259 Converter", version="1.0.0")
 
 CONVERSION_TIMEOUT_SEC = float(os.environ.get("CONVERSION_TIMEOUT_SEC", "300"))
-
-# #region agent log
-def _agent_debug_path() -> Path:
-    if os.environ.get("DEBUG_NDJSON_LOG"):
-        return Path(os.environ["DEBUG_NDJSON_LOG"])
-    base = Path(__file__).resolve()
-    try:
-        return base.parents[3] / "debug-fb6a05.log"
-    except IndexError:
-        return base.parent.parent / "debug-fb6a05.log"
-
-
-def _agent_debug_log(
-    message: str,
-    *,
-    data: dict[str, Any],
-    hypothesis_id: str,
-    location: str = "main.py:docx",
-) -> None:
-    line = (
-        json.dumps(
-            {
-                "sessionId": "fb6a05",
-                "timestamp": int(time.time() * 1000),
-                "location": location,
-                "message": message,
-                "data": data,
-                "hypothesisId": hypothesis_id,
-            },
-            ensure_ascii=False,
-        )
-        + "\n"
-    )
-    print(line, end="", file=sys.stderr, flush=True)
-    p = _agent_debug_path()
-    try:
-        p.parent.mkdir(parents=True, exist_ok=True)
-        with p.open("a", encoding="utf-8") as f:
-            f.write(line)
-    except OSError:
-        pass
-# #endregion
 
 
 class S3Loc(BaseModel):
@@ -134,17 +90,8 @@ async def validation_exception_handler(_: Request, exc: RequestValidationError) 
     )
 
 
-def _aws_region_for_client() -> str | None:
-    # Empty string from e.g. `docker -e AWS_REGION=$AWS_REGION` (unset host) would yield invalid s3..amazonaws.com
-    r = (os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "").strip()
-    return r or None
-
-
 def _s3_client():
-    r = _aws_region_for_client()
-    if r:
-        return boto3.client("s3", region_name=r)
-    return boto3.client("s3")
+    return boto3.client("s3", region_name=os.environ.get("AWS_REGION"))
 
 
 def _normalize_prefix(prefix: str) -> str:
@@ -204,33 +151,7 @@ def health():
 
 @app.post("/v1/convert/docx-to-pdf")
 def convert_docx_to_pdf(req: DocxToPdfRequest):
-    # #region agent log
-    try:
-        return _convert_docx_to_pdf_core(req)
-    except Exception as e:
-        _agent_debug_log(
-            "docx_to_pdf unhandled_exception",
-            data={
-                "exc_type": type(e).__name__,
-                "exc_msg": str(e)[:800],
-                "stack": traceback.format_exc()[:3000],
-            },
-            hypothesis_id="E",
-            location="main.py:convert_docx_to_pdf",
-        )
-        raise
-    # #endregion
-
-
-def _convert_docx_to_pdf_core(req: DocxToPdfRequest):
     started = time.perf_counter()
-    # #region agent log
-    _agent_debug_log(
-        "docx_to_pdf start",
-        data={"in_bucket": req.input.bucket, "in_key": req.input.key, "out_bucket": req.output.bucket, "out_prefix": req.output.keyPrefix},
-        hypothesis_id="A",
-    )
-    # #endregion
     try:
         object_id = _object_id_from_key(req.input.key)
     except ValueError as e:
@@ -248,24 +169,11 @@ def _convert_docx_to_pdf_core(req: DocxToPdfRequest):
         if code in ("NoSuchKey", "404", "NotFound"):
             return _fail_response(error_code="OBJECT_NOT_FOUND", message=str(e), details={"bucket": req.input.bucket, "key": req.input.key})
         return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 read failed: {e}")
-    except BotoCoreError as e:
-        return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 read failed: {e}")
-
-    # #region agent log
-    _agent_debug_log(
-        "docx_to_pdf after_s3_read",
-        data={"docx_len": len(docx_bytes) if docx_bytes else 0, "out_key": out_key},
-        hypothesis_id="A",
-    )
-    # #endregion
 
     if not docx_bytes:
         return _fail_response(error_code="INVALID_INPUT", message="Empty DOCX object")
 
     soffice = _soffice_bin()
-    # #region agent log
-    _agent_debug_log("docx_to_pdf soffice", data={"soffice": soffice, "soffice_set": bool(soffice)}, hypothesis_id="B")
-    # #endregion
     if not soffice:
         return _fail_response(
             error_code="CONVERSION_FAILED",
@@ -284,24 +192,11 @@ def _convert_docx_to_pdf_core(req: DocxToPdfRequest):
                 check=False,
                 capture_output=True,
                 text=True,
-                encoding="utf-8",
-                errors="replace",
                 timeout=CONVERSION_TIMEOUT_SEC,
                 env=_soffice_subprocess_env(td_path),
             )
         except subprocess.TimeoutExpired:
             return _fail_response(error_code="CONVERSION_TIMEOUT", message="LibreOffice (soffice) conversion timed out")
-        # #region agent log
-        _agent_debug_log(
-            "docx_to_pdf soffice_done",
-            data={
-                "returncode": cp.returncode,
-                "stderr_tail": (cp.stderr or "")[:400],
-                "out_exists": out_path.is_file(),
-            },
-            hypothesis_id="C",
-        )
-        # #endregion
         if cp.returncode != 0:
             return _fail_response(
                 error_code="CONVERSION_FAILED",
@@ -326,13 +221,6 @@ def _convert_docx_to_pdf_core(req: DocxToPdfRequest):
             message="Conversion output is not a valid PDF",
         )
 
-    # #region agent log
-    _agent_debug_log(
-        "docx_to_pdf before_s3_put",
-        data={"pdf_len": len(pdf_bytes), "out_bucket": req.output.bucket, "out_key": out_key, "head4": list(pdf_bytes[:4])},
-        hypothesis_id="D",
-    )
-    # #endregion
     try:
         s3.put_object(
             Bucket=req.output.bucket,
@@ -342,8 +230,6 @@ def _convert_docx_to_pdf_core(req: DocxToPdfRequest):
         )
     except ClientError as e:
         return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 write failed: {e}")
-    except BotoCoreError as e:
-        return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 write failed: {e}")
 
     elapsed_ms = int((time.perf_counter() - started) * 1000)
     return {
@@ -381,8 +267,6 @@ def convert_pdf_to_images(req: PdfToImagesRequest):
         if code in ("NoSuchKey", "404", "NotFound"):
             return _fail_response(error_code="OBJECT_NOT_FOUND", message=str(e), details={"bucket": req.input.bucket, "key": req.input.key})
         return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 read failed: {e}")
-    except BotoCoreError as e:
-        return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 read failed: {e}")
 
     if not pdf_bytes:
         return _fail_response(error_code="INVALID_INPUT", message="Empty PDF object")
@@ -405,15 +289,7 @@ def convert_pdf_to_images(req: PdfToImagesRequest):
             str(out_base),
         ]
         try:
-            subprocess.run(
-                cmd,
-                check=True,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=int(CONVERSION_TIMEOUT_SEC),
-            )
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=int(CONVERSION_TIMEOUT_SEC))
         except subprocess.TimeoutExpired:
             return _fail_response(error_code="CONVERSION_TIMEOUT", message="pdftoppm timed out")
         except subprocess.CalledProcessError as e:
@@ -437,36 +313,31 @@ def convert_pdf_to_images(req: PdfToImagesRequest):
         if not produced:
             return _fail_response(error_code="CONVERSION_FAILED", message="No PNG pages produced by pdftoppm")
 
-        try:
-            manifest_pages: list[dict[str, Any]] = []
-            for idx, src in enumerate(produced, start=1):
-                dest_key = f"{key_prefix}page-{idx:04d}.png"
-                page_body = src.read_bytes()
-                s3.put_object(
-                    Bucket=req.output.bucket,
-                    Key=dest_key,
-                    Body=page_body,
-                    ContentType="image/png",
-                )
-                manifest_pages.append({"page": idx, "key": dest_key})
-
-            manifest_obj = {
-                "dpi": render.dpi,
-                "format": render.format,
-                "sourcePdfKey": req.input.key,
-                "pages": manifest_pages,
-            }
-            manifest_key = f"{key_prefix}manifest.json"
+        manifest_pages: list[dict[str, Any]] = []
+        for idx, src in enumerate(produced, start=1):
+            dest_key = f"{key_prefix}page-{idx:04d}.png"
+            body = src.read_bytes()
             s3.put_object(
                 Bucket=req.output.bucket,
-                Key=manifest_key,
-                Body=json.dumps(manifest_obj, indent=2).encode("utf-8"),
-                ContentType="application/json",
+                Key=dest_key,
+                Body=body,
+                ContentType="image/png",
             )
-        except ClientError as e:
-            return _fail_response(error_code="CONVERSION_FAILED", message=f"S3 write failed: {e}")
-        except BotoCoreError as e:
-            return _fail_response(error_code="CONVERSION_FAILED", message=f"AWS S3 write failed: {e}")
+            manifest_pages.append({"page": idx, "key": dest_key})
+
+        manifest_obj = {
+            "dpi": render.dpi,
+            "format": render.format,
+            "sourcePdfKey": req.input.key,
+            "pages": manifest_pages,
+        }
+        manifest_key = f"{key_prefix}manifest.json"
+        s3.put_object(
+            Bucket=req.output.bucket,
+            Key=manifest_key,
+            Body=json.dumps(manifest_obj, indent=2).encode("utf-8"),
+            ContentType="application/json",
+        )
 
         elapsed_ms = int((time.perf_counter() - started) * 1000)
         return {

@@ -1,0 +1,8 @@
+[
+  {"id":"pdf_smoke_001","target":"ec2_local","timeTotalSec":0.316286,"http":200,"status":"succeeded","processingMs":312,"pageCount":1,"manifestKey":"output/images/pdf_smoke_001/manifest.json"},
+  {"id":"pdf_baseline_small","target":"ec2_local","timeTotalSec":0.399319,"http":200,"status":"succeeded","processingMs":395,"pageCount":2,"manifestKey":"output/images/pdf_baseline_small/manifest.json"},
+  {"id":"pdf_baseline_medium","target":"ec2_local","timeTotalSec":1.158057,"http":200,"status":"succeeded","processingMs":1154,"pageCount":8,"manifestKey":"output/images/pdf_baseline_medium/manifest.json"},
+  {"id":"pdf_baseline_multipage","target":"ec2_local","timeTotalSec":2.005229,"http":200,"status":"succeeded","processingMs":2001,"pageCount":15,"manifestKey":"output/images/pdf_baseline_multipage/manifest.json"},
+  {"id":"pdf_large_001","target":"ec2_local","timeTotalSec":5.121815,"http":200,"status":"succeeded","processingMs":5117,"pageCount":40,"manifestKey":"output/images/pdf_large_001/manifest.json"},
+  {"id":"pdf_stress_001","target":"ec2_local","timeTotalSec":6.783746,"http":200,"status":"succeeded","processingMs":6779,"pageCount":50,"manifestKey":"output/images/pdf_stress_001/manifest.json"}
+]

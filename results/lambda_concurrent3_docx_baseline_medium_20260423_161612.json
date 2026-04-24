@@ -1,0 +1,29 @@
+﻿[
+    {
+        "label":  "par1",
+        "clientMs":  2432,
+        "status":  "succeeded",
+        "processingMs":  901,
+        "PSComputerName":  "localhost",
+        "RunspaceId":  "138bc86b-eecf-472d-9d66-1de95bfaaf3a",
+        "PSShowComputerName":  false
+    },
+    {
+        "label":  "par2",
+        "clientMs":  4663,
+        "status":  "succeeded",
+        "processingMs":  1832,
+        "PSComputerName":  "localhost",
+        "RunspaceId":  "3c5bb550-7659-4318-8a29-2ffdc071f828",
+        "PSShowComputerName":  false
+    },
+    {
+        "label":  "par3",
+        "clientMs":  31439,
+        "status":  "succeeded",
+        "processingMs":  28790,
+        "PSComputerName":  "localhost",
+        "RunspaceId":  "6f495c5b-a232-4098-946f-43ab4ea3d11f",
+        "PSShowComputerName":  false
+    }
+]

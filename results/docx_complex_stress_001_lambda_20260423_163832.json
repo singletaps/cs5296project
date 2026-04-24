@@ -1,0 +1,15 @@
+﻿{
+    "target":  "lambda",
+    "id":  "docx_complex_stress_001",
+    "clientMs":  9282,
+    "result":  {
+                   "status":  "succeeded",
+                   "output":  {
+                                  "bucket":  "cs5296-project",
+                                  "key":  "output/pdf/docx_complex_stress_001.pdf"
+                              },
+                   "metrics":  {
+                                   "processingMs":  6259
+                               }
+               }
+}

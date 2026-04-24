@@ -13,3 +13,6 @@ venv/
 .idea/
 .vscode/
 *.log
+!results/*.log
+benchmarks.rar
+Group_259_report.docx
