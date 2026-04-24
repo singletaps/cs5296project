@@ -1,0 +1,16 @@
+{
+  "input": {
+    "bucket": "cs5296-project",
+    "key": "input/pdf/pdf_smoke_001.pdf"
+  },
+  "output": {
+    "bucket": "cs5296-project",
+    "keyPrefix": "output/images/pdf_smoke_001/"
+  },
+  "render": {
+    "dpi": 150,
+    "format": "png",
+    "maxPages": 50,
+    "pageRange": null
+  }
+}
