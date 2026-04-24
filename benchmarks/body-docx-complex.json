@@ -1,0 +1,10 @@
+{
+  "input": {
+    "bucket": "cs5296-project",
+    "key": "input/docx/docx_complex_stress_001.docx"
+  },
+  "output": {
+    "bucket": "cs5296-project",
+    "keyPrefix": "output/pdf/"
+  }
+}
